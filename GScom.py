@@ -1,9 +1,12 @@
 import json
 import socket
-import paho.mqtt.client as paho
+import threading
 
-# Name of this client. Don't use identical client IDs for different clients
+import paho.mqtt.client as paho
+import requests
+# Name of this client. Don't use identical client IDs for differenfMartinat clients
 import time
+from converter import *
 
 clientID = 'GS'
 DEBUG = 0
@@ -14,26 +17,44 @@ DRONE_IP = '192.168.1.102'
 class MosquittoEndpoint:
     def __init__(self):
         self.mqttc = paho.Client(client_id=clientID, clean_session=True)
+
         self.mqttc.on_connect = self.onConnect
         self.mqttc.on_subscribe = self.onSubscribe
         self.mqttc.on_message = self.onMessage
         self.mqttc.on_disconnect = self.onDisconnect
         self.mqttc.connect("192.168.1.102", 1883, 60)
-        self.mqttc.subscribe(TOPIC)
+        self.mqttc.loop_start()
+        self.videoReceiveLock = threading.Lock()
+        self.launchCache = {}
 
     def onConnect(self, client, userdata, flags, rc):
         print("Connected with result code " + str(rc))
+        self.mqttc.subscribe(TOPIC)
 
     def onSubscribe(self, client, userdata, mid, granted_qos):
         print('Subscribed on topic.')
 
     def onMessage(self, client, userdata, message):
         payload = message.payload.decode("utf-8")
+        print(payload)
         msg = json.loads(payload.replace('\'', '\"'))
-        print('Message Received ' + payload)
-        if msg['type'] == 'video_ready_for_transmit':
-            fetchVideo(msg['name'])
-            self.mqttc.publish("videoProcessing", payload='{"status": "finish"}')
+        if msg['type'] == 'launch_ready_for_transmit':
+            self.videoReceiveLock.acquire()
+            fetch_video(msg['name'])
+            self.videoReceiveLock.release()
+            self.mqttc.publish("videoProcessing", payload='{"status": "finish", "name": "' + msg['name'] + '"}')
+        elif msg['type'] == 'video_ready_for_transmit':
+            fetch_video(msg['name'])
+        elif msg['type'] == 'video_list_updated':
+            publish_on_rest(msg['list'], msg['storage'])
+        elif msg['type'] == 'transfer_videos':
+            self.transfer_videos(msg['list'])
+        elif msg['type'] == 'launch_data':
+            if not self.launchCache[msg['name']]:
+                self.launchCache[msg['name']] = []
+            print(msg)
+            pos = getCanvasPosition((msg["lat"], msg["log"]), msg["gpsData"], -radians(msg["ort"]), msg["alt"], (-radians(msg["angy"]),radians(msg["angx"])))
+            print(pos)
 
     def onDisconnect(self, client, userdata, message):
         print("Disconnected from the broker.")
@@ -41,15 +62,22 @@ class MosquittoEndpoint:
     def sendCommand(self, topic, payload):
         self.mqttc.publish(topic, payload=payload, qos=1, retain=False)
 
+    def transfer_videos(self, list):
+        for v in list:
+            print(v)
+            self.mqttc.publish("videoRequest", payload='{"type": "process_video", "name": "' + v + '"}')
 
-def fetchVideo(name='launch'):
+
+def fetch_video(name='launch'):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     print('File transmission socket opened')
     while True:
         try:
             s.connect(('192.168.1.102', 30000))
-            with open('static/videos/' +    name + '.mp4', 'wb') as f:
+            n = s.recv(1024).decode('utf-8')
+            print(n)
+            with open('static/videos/'+str(n), 'wb') as f:
                 while True:
                     data = s.recv(1024)
                     if not data:
@@ -62,6 +90,11 @@ def fetchVideo(name='launch'):
     f.close()
     s.close()
     print('File transmission socket finished')
+
+def publish_on_rest(lista, storage):
+    data = '{ "list": ' + str(lista).replace('\'', '\"') + ',"storage": ' + str(storage).replace('\'', '\"') + '}';
+    r = requests.post('http://127.0.0.1:5000/put_videos', data)
+    print('Drone video storage updated')
 
 
 
