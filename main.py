@@ -36,7 +36,7 @@ def on_message_boat(mosq, obj, msg):
     dict[data["id"]]=(data["coords"][1],data["coords"][0])
     #print("boat gps locations: ",dict)
     mc.set("id",dict)
-    public_on_rest(data)
+    publish_on_rest(data)
 
 
 def publish_on_rest(dic,ip="192.168.1.103"):
