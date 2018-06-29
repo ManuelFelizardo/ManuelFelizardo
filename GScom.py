@@ -36,7 +36,6 @@ class MosquittoEndpoint:
 
     def onMessage(self, client, userdata, message):
         payload = message.payload.decode("utf-8")
-        print(payload)
         msg = json.loads(payload.replace('\'', '\"'))
         if msg['type'] == 'launch_ready_for_transmit':
             self.videoReceiveLock.acquire()
@@ -50,11 +49,10 @@ class MosquittoEndpoint:
         elif msg['type'] == 'transfer_videos':
             self.transfer_videos(msg['list'])
         elif msg['type'] == 'launch_data':
-            if not self.launchCache[msg['name']]:
+            if msg['name'] not in self.launchCache:
                 self.launchCache[msg['name']] = []
-            print(msg)
-            pos = getCanvasPosition((msg["lat"], msg["log"]), msg["gpsData"], -radians(msg["ort"]), msg["alt"], (-radians(msg["angy"]),radians(msg["angx"])))
-            print(pos)
+            gpsData = [((k[1]["coords"][1],k[1]["coords"][0]),int(k[0])) for k in msg["gpsData"]]
+            pos = getCanvasPosition((msg["lat"], msg["log"]), gpsData, -radians(msg["ort"]), max(msg["alt"],15), (-radians(msg["angy"]),radians(msg["angx"])))
 
     def onDisconnect(self, client, userdata, message):
         print("Disconnected from the broker.")
@@ -64,7 +62,6 @@ class MosquittoEndpoint:
 
     def transfer_videos(self, list):
         for v in list:
-            print(v)
             self.mqttc.publish("videoRequest", payload='{"type": "process_video", "name": "' + v + '"}')
 
 
@@ -76,7 +73,6 @@ def fetch_video(name='launch'):
         try:
             s.connect(('192.168.1.102', 30000))
             n = s.recv(1024).decode('utf-8')
-            print(n)
             with open('static/videos/'+str(n), 'wb') as f:
                 while True:
                     data = s.recv(1024)

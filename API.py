@@ -20,7 +20,8 @@ api = flask_restful.Api(app)
 CORS(app)
 
 msgDrone = None
-msg = None
+boats={}
+files_in_drone = {}
 
 dataBoats = None
 dataDrone = None
@@ -155,11 +156,11 @@ def genAnalog():
 
 @app.route("/produce", methods=["POST"])
 def produce():
-    global msg
+    global boats
     msg1 = request.stream.read()
-    dataBoats = json.loads(msg1.decode("utf-8"))
-    msg = json.dumps(dataBoats)
-    return msg
+    message = json.loads(msg1.decode("utf-8"))
+    boats[message['id']]=message
+    return boats
 
 
 @app.route("/produceDrone", methods=["POST"])
@@ -171,6 +172,13 @@ def produceDrone():
     print(msgDrone)
     return msgDrone
 
+@app.route("/put_videos", methods=["POST"])		
+    def produce_videos():	
+    global files_in_drone		
+    msg1 = request.stream.read()		
+    data = msg1.decode("utf-8")		
+    files_in_drone = data		
+    return ""
 
 @app.route("/produceTimeID", methods=["POST"])
 def produce_time_id():
@@ -185,20 +193,20 @@ def consume_time_id():
 @app.route("/GPSLocations.json")
 def consume():
     data = {"type": "FeatureCollection", "features": []}
-    if msg != None:
-        print(msg)
-        for x in json.loads(msg).keys():
-            data["features"].append(json.loads(msg)[x])
+    if boats != None:
+        print(boats)
+        for x in boats:
+            data["features"].append(boats[x])
 
     if msgDrone != None:
         data["features"].append(json.loads(msgDrone))
 
     return str(data).replace('\'', '\"')
 
-#@app.route('/video.mjpeg')
-#def video_feed():
-#    return Response(gen(),
-#                    mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/video.mjpeg')
+def video_feed():
+    return Response(gen(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/mask.mjpeg')
 def video_feed2():
@@ -216,7 +224,7 @@ def video_feed4():
     return Response(genAnalog(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/video.mjpeg')
+@app.route('/videooverlay.mjpeg')
 def video_feed5():
     return Response(genIdOverlay(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -226,6 +234,9 @@ def getValues():
     return Response(gen(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route("/consume_videos_processing")		
+def consume_videos_processing():		
+    return str(files_in_drone).replace('\'', '\"')
 
 @app.route("/getImages")
 def consume_images():
@@ -262,6 +273,7 @@ def consume_videos():
         else:
             list_videos.append(
                 File("NAME", path_videos + file_videos, time.ctime(os.path.getctime(path_videos + file_videos))))
+    list_videos.sort(key=lambda x: x.path, reverse=True)
     json_videos= '['
     for i, file in enumerate(list_videos):
         s = len(list_videos) - 1
@@ -273,7 +285,7 @@ def consume_videos():
 
 
 @app.route("/video_receive", methods=["POST"])
-def video_recieve():
+def video_receive():
     args = request.stream.read()
 
     name = json.loads(args.decode("utf-8"))
