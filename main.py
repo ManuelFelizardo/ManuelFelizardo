@@ -36,6 +36,14 @@ def on_message_boat(mosq, obj, msg):
     dict[data["id"]]=(data["coords"][1],data["coords"][0])
     #print("boat gps locations: ",dict)
     mc.set("id",dict)
+    public_on_rest(data)
+
+
+def publish_on_rest(dic,ip="192.168.1.103"):
+    try:
+        r = requests.post('http://'+ip+':5000/produce', json.dumps(dic))
+    except:
+        pass
 
 def on_publish(mosq, obj, mid):
     pass
@@ -49,21 +57,14 @@ class CalculateImagePositions(threading.Thread):
 
     def run(self):
         while True:
-            #time.sleep(0.5)
             client = paho.Client(clean_session=True)
             client.on_message = self.on_message
             client.on_publish = self.on_publish
             client.connect("192.168.1.102", 1883, 60)
             client.subscribe("droneInfo", 2)
-            #client.unsubscribe("droneInfo")
-            #while client.loop() == 0:
-            #    pass
-            #client.loop()
-            #client.unsubscribe("droneInfo")
             while client.loop() == 0:
                 pass
 
-            #time.sleep(1)
 
 class UpdateBoatPosition(threading.Thread):
 
